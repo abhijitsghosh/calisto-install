@@ -1,0 +1,1128 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.43.8.12551",
+      "templateHash": "11913573443045079264"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "allowedValues": [
+        "australiaeast",
+        "australiasoutheast"
+      ],
+      "metadata": {
+        "description": "Azure region. Australian regions only: assessment data stays onshore. Container Apps is not offered in Australia Central or Central 2 (and user-assigned identities not in Central 2), so the two Australia East/Southeast regions are the choice."
+      }
+    },
+    "namePrefix": {
+      "type": "string",
+      "defaultValue": "calisto",
+      "metadata": {
+        "description": "Resource name prefix."
+      }
+    },
+    "image": {
+      "type": "string",
+      "defaultValue": "ghcr.io/abhijitsghosh/calisto:latest",
+      "metadata": {
+        "description": "Container image, pinned by digest (repo@sha256:...). install.sh resolves the tag to a digest."
+      }
+    },
+    "acrResourceId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional. Resource id of the agency's Azure Container Registry the image was imported into. The app pulls from it with its managed identity (AcrPull is granted on the registry)."
+      }
+    },
+    "tags": {
+      "type": "object",
+      "defaultValue": {},
+      "metadata": {
+        "description": "Tags applied to every resource."
+      }
+    },
+    "entraTenantId": {
+      "type": "string",
+      "metadata": {
+        "description": "Entra tenant id (sign-in and Graph)."
+      }
+    },
+    "entraClientId": {
+      "type": "string",
+      "metadata": {
+        "description": "Entra application (client) id of the sign-in app registration. The app authenticates as it with a managed-identity client assertion; there is no client secret."
+      }
+    },
+    "subscriptionsCsv": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Comma-separated subscription ids to assess; empty = every subscription the identity can read."
+      }
+    },
+    "grantSubscriptionReader": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Grant the managed identity Reader on this subscription. Needs rights to write role assignments here; Reader at a management group is granted on Calisto's Permissions page."
+      }
+    },
+    "awsEnabled": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Kept for installs that connected AWS before v0.4. New installs connect AWS on Calisto's Permissions page."
+      }
+    },
+    "awsRoleArn": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "ARN of the AWS hub role Calisto assumes with its Entra-issued token."
+      }
+    },
+    "awsMemberRole": {
+      "type": "string",
+      "defaultValue": "CalistoMemberRole",
+      "metadata": {
+        "description": "Role Calisto assumes in each member account from the hub. Empty scans the hub account only."
+      }
+    },
+    "awsTokenAudience": {
+      "type": "string",
+      "defaultValue": "api://AzureADTokenExchange",
+      "metadata": {
+        "description": "Audience of the Entra token presented to AWS; must match the IAM OIDC provider's client id."
+      }
+    },
+    "awsHomeRegion": {
+      "type": "string",
+      "defaultValue": "ap-southeast-2",
+      "metadata": {
+        "description": "AWS region for STS and the default scan region."
+      }
+    },
+    "awsRegions": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Comma-separated AWS regions to assess. Empty assesses every enabled region."
+      }
+    },
+    "awsAccounts": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Comma-separated AWS account ids to assess. Empty assesses every account in the Organization."
+      }
+    },
+    "networkMode": {
+      "type": "string",
+      "defaultValue": "managed",
+      "allowedValues": [
+        "managed",
+        "byo"
+      ],
+      "metadata": {
+        "description": "managed = create a small VNet for Calisto; byo = use existing subnets in the agency's spoke VNet."
+      }
+    },
+    "ingress": {
+      "type": "string",
+      "defaultValue": "[if(equals(parameters('networkMode'), 'byo'), 'internal', 'external')]",
+      "allowedValues": [
+        "internal",
+        "external"
+      ],
+      "metadata": {
+        "description": "internal = environment on an internal load balancer, reachable only through the VNet (and what is peered/routed to it); external = public ingress. Defaults to internal for byo, external for managed."
+      }
+    },
+    "infrastructureSubnetId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "byo only. Subnet for the Container Apps environment: /27 or larger, delegated to Microsoft.App/environments, empty."
+      }
+    },
+    "dbDelegatedSubnetId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "byo only. Subnet for Postgres VNet integration: /28 or larger, delegated to Microsoft.DBforPostgreSQL/flexibleServers."
+      }
+    },
+    "dbPrivateDnsZoneId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional. Resource id of an existing (for example hub-owned) private DNS zone for Postgres VNet integration. Its name must end in .postgres.database.azure.com (for example private.postgres.database.azure.com). Empty creates <namePrefix>.private.postgres.database.azure.com here and links it to the VNet."
+      }
+    },
+    "createEnvironmentDnsZone": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Internal ingress only. Create a private DNS zone for the environment's default domain here (wildcard and apex A records to the internal load balancer). Set false when the network team hosts the zone centrally."
+      }
+    },
+    "dnsZoneLinkVnetIds": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Extra VNet ids to link the private DNS zones created here to, for example the hub VNet that holds the DNS Private Resolver the spokes use."
+      }
+    },
+    "managedVnetPrefix": {
+      "type": "string",
+      "defaultValue": "10.42.0.0/24",
+      "metadata": {
+        "description": "managed only. VNet address space (/24 or larger). The app subnet is its first /27, Postgres its third /28."
+      }
+    },
+    "allowedIngressCidrs": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "External ingress only. CIDRs allowed to reach the app (for example the agency's internet egress addresses). Empty allows any source; sign-in is still required."
+      }
+    },
+    "dbName": {
+      "type": "string",
+      "defaultValue": "calisto",
+      "metadata": {
+        "description": "Database name."
+      }
+    },
+    "backupRetentionDays": {
+      "type": "int",
+      "defaultValue": 35,
+      "minValue": 7,
+      "maxValue": 35,
+      "metadata": {
+        "description": "Postgres backup retention, days (7 to 35)."
+      }
+    },
+    "geoRedundantBackup": {
+      "type": "string",
+      "defaultValue": "Enabled",
+      "allowedValues": [
+        "Enabled",
+        "Disabled"
+      ],
+      "metadata": {
+        "description": "Geo-redundant Postgres backup to the paired region (australiaeast<->australiasoutheast), so backup copies stay in Australia. Both regions support it. Fixed at server creation and cannot be changed afterwards."
+      }
+    },
+    "logRetentionDays": {
+      "type": "int",
+      "defaultValue": 90,
+      "minValue": 30,
+      "maxValue": 730,
+      "metadata": {
+        "description": "Log Analytics retention, days."
+      }
+    }
+  },
+  "variables": {
+    "byo": "[equals(parameters('networkMode'), 'byo')]",
+    "internal": "[equals(parameters('ingress'), 'internal')]",
+    "useAcr": "[not(empty(parameters('acrResourceId')))]",
+    "acrParts": "[split(parameters('acrResourceId'), '/')]",
+    "awsEnv": "[if(parameters('awsEnabled'), createArray(createObject('name', 'CALISTO_AWS_ENABLED', 'value', 'true'), createObject('name', 'CALISTO_AWS_ROLE_ARN', 'value', parameters('awsRoleArn')), createObject('name', 'CALISTO_AWS_MEMBER_ROLE', 'value', parameters('awsMemberRole')), createObject('name', 'CALISTO_AWS_TOKEN_AUDIENCE', 'value', parameters('awsTokenAudience')), createObject('name', 'CALISTO_AWS_HOME_REGION', 'value', parameters('awsHomeRegion')), createObject('name', 'CALISTO_AWS_REGIONS', 'value', parameters('awsRegions')), createObject('name', 'CALISTO_AWS_ACCOUNTS', 'value', parameters('awsAccounts'))), createArray())]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[format('{0}-mi', parameters('namePrefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]"
+    },
+    {
+      "type": "Microsoft.DBforPostgreSQL/flexibleServers",
+      "apiVersion": "2024-08-01",
+      "name": "[format('{0}-db-{1}', parameters('namePrefix'), uniqueString(resourceGroup().id))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "sku": {
+        "name": "Standard_B1ms",
+        "tier": "Burstable"
+      },
+      "properties": {
+        "version": "16",
+        "authConfig": {
+          "activeDirectoryAuth": "Enabled",
+          "passwordAuth": "Disabled",
+          "tenantId": "[parameters('entraTenantId')]"
+        },
+        "storage": {
+          "storageSizeGB": 32,
+          "autoGrow": "Enabled"
+        },
+        "backup": {
+          "backupRetentionDays": "[parameters('backupRetentionDays')]",
+          "geoRedundantBackup": "[parameters('geoRedundantBackup')]"
+        },
+        "highAvailability": {
+          "mode": "Disabled"
+        },
+        "network": {
+          "delegatedSubnetResourceId": "[if(variables('byo'), parameters('dbDelegatedSubnetId'), reference(resourceId('Microsoft.Resources/deployments', format('{0}-network', parameters('namePrefix'))), '2025-04-01').outputs.dbSubnetId.value)]",
+          "privateDnsZoneArmResourceId": "[if(empty(parameters('dbPrivateDnsZoneId')), reference(resourceId('Microsoft.Resources/deployments', format('{0}-db-dns', parameters('namePrefix'))), '2025-04-01').outputs.zoneId.value, parameters('dbPrivateDnsZoneId'))]",
+          "publicNetworkAccess": "Disabled"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', format('{0}-db-dns', parameters('namePrefix')))]",
+        "[resourceId('Microsoft.Resources/deployments', format('{0}-network', parameters('namePrefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.DBforPostgreSQL/flexibleServers/configurations",
+      "apiVersion": "2024-08-01",
+      "name": "[format('{0}/{1}', format('{0}-db-{1}', parameters('namePrefix'), uniqueString(resourceGroup().id)), 'log_connections')]",
+      "properties": {
+        "value": "on",
+        "source": "user-override"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', format('{0}-db-{1}', parameters('namePrefix'), uniqueString(resourceGroup().id)))]"
+      ]
+    },
+    {
+      "type": "Microsoft.DBforPostgreSQL/flexibleServers/configurations",
+      "apiVersion": "2024-08-01",
+      "name": "[format('{0}/{1}', format('{0}-db-{1}', parameters('namePrefix'), uniqueString(resourceGroup().id)), 'log_disconnections')]",
+      "properties": {
+        "value": "on",
+        "source": "user-override"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers/configurations', format('{0}-db-{1}', parameters('namePrefix'), uniqueString(resourceGroup().id)), 'log_connections')]",
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', format('{0}-db-{1}', parameters('namePrefix'), uniqueString(resourceGroup().id)))]"
+      ]
+    },
+    {
+      "type": "Microsoft.DBforPostgreSQL/flexibleServers/databases",
+      "apiVersion": "2024-08-01",
+      "name": "[format('{0}/{1}', format('{0}-db-{1}', parameters('namePrefix'), uniqueString(resourceGroup().id)), parameters('dbName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', format('{0}-db-{1}', parameters('namePrefix'), uniqueString(resourceGroup().id)))]",
+        "[resourceId('Microsoft.Resources/deployments', format('{0}-db-admin', parameters('namePrefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}-logs', parameters('namePrefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "sku": {
+          "name": "PerGB2018"
+        },
+        "retentionInDays": "[parameters('logRetentionDays')]"
+      }
+    },
+    {
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', format('{0}-db-{1}', parameters('namePrefix'), uniqueString(resourceGroup().id)))]",
+      "name": "to-log-analytics",
+      "properties": {
+        "workspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-logs', parameters('namePrefix')))]",
+        "logs": [
+          {
+            "category": "PostgreSQLLogs",
+            "enabled": true
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-logs', parameters('namePrefix')))]",
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', format('{0}-db-{1}', parameters('namePrefix'), uniqueString(resourceGroup().id)))]"
+      ]
+    },
+    {
+      "type": "Microsoft.App/managedEnvironments",
+      "apiVersion": "2024-03-01",
+      "name": "[format('{0}-env', parameters('namePrefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "appLogsConfiguration": {
+          "destination": "log-analytics",
+          "logAnalyticsConfiguration": {
+            "customerId": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-logs', parameters('namePrefix'))), '2023-09-01').customerId]",
+            "sharedKey": "[listKeys(resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-logs', parameters('namePrefix'))), '2023-09-01').primarySharedKey]"
+          }
+        },
+        "vnetConfiguration": {
+          "infrastructureSubnetId": "[if(variables('byo'), parameters('infrastructureSubnetId'), reference(resourceId('Microsoft.Resources/deployments', format('{0}-network', parameters('namePrefix'))), '2025-04-01').outputs.caeSubnetId.value)]",
+          "internal": "[variables('internal')]"
+        },
+        "workloadProfiles": [
+          {
+            "name": "Consumption",
+            "workloadProfileType": "Consumption"
+          }
+        ],
+        "zoneRedundant": false
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-logs', parameters('namePrefix')))]",
+        "[resourceId('Microsoft.Resources/deployments', format('{0}-network', parameters('namePrefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.App/containerApps",
+      "apiVersion": "2024-03-01",
+      "name": "[format('{0}-app', parameters('namePrefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('namePrefix'))))]": {}
+        }
+      },
+      "properties": {
+        "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', format('{0}-env', parameters('namePrefix')))]",
+        "workloadProfileName": "Consumption",
+        "configuration": {
+          "ingress": {
+            "copy": [
+              {
+                "name": "ipSecurityRestrictions",
+                "count": "[length(if(variables('internal'), createArray(), parameters('allowedIngressCidrs')))]",
+                "input": {
+                  "name": "[format('allow-{0}', copyIndex('ipSecurityRestrictions'))]",
+                  "ipAddressRange": "[if(variables('internal'), createArray(), parameters('allowedIngressCidrs'))[copyIndex('ipSecurityRestrictions')]]",
+                  "action": "Allow"
+                }
+              }
+            ],
+            "external": true,
+            "targetPort": 8080,
+            "transport": "auto",
+            "allowInsecure": false
+          },
+          "registries": "[if(variables('useAcr'), createArray(createObject('server', reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', if(variables('useAcr'), variables('acrParts')[2], subscription().subscriptionId), if(variables('useAcr'), variables('acrParts')[4], resourceGroup().name)), 'Microsoft.Resources/deployments', format('{0}-acr-pull', parameters('namePrefix'))), '2025-04-01').outputs.loginServer.value, 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('namePrefix'))))), createArray())]",
+          "secrets": []
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "calisto",
+              "image": "[parameters('image')]",
+              "resources": {
+                "cpu": 1,
+                "memory": "2Gi"
+              },
+              "env": "[concat(createArray(createObject('name', 'CALISTO_DB_URL', 'value', format('jdbc:postgresql://{0}:5432/{1}?sslmode=verify-full&sslfactory=org.postgresql.ssl.DefaultJavaSSLFactory', reference(resourceId('Microsoft.DBforPostgreSQL/flexibleServers', format('{0}-db-{1}', parameters('namePrefix'), uniqueString(resourceGroup().id))), '2024-08-01').fullyQualifiedDomainName, parameters('dbName'))), createObject('name', 'CALISTO_DB_USER', 'value', format('{0}-mi', parameters('namePrefix'))), createObject('name', 'CALISTO_DB_PASSWORDLESS', 'value', 'true'), createObject('name', 'CALISTO_ENTRA_TENANT_ID', 'value', parameters('entraTenantId')), createObject('name', 'CALISTO_ENTRA_CLIENT_ID', 'value', parameters('entraClientId')), createObject('name', 'CALISTO_AUTH_CLIENT_ASSERTION', 'value', 'managed-identity'), createObject('name', 'CALISTO_MI_OBJECT_ID', 'value', reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('namePrefix'))), '2023-01-31').principalId), createObject('name', 'CALISTO_MI_NAME', 'value', format('{0}-mi', parameters('namePrefix'))), createObject('name', 'CALISTO_SUBSCRIPTIONS', 'value', parameters('subscriptionsCsv')), createObject('name', 'CALISTO_SELF_RESOURCE_GROUP', 'value', resourceGroup().name), createObject('name', 'CALISTO_NETWORK_APP_SUBNET_CIDR', 'value', if(variables('byo'), coalesce(tryGet(reference(parameters('infrastructureSubnetId'), '2023-11-01'), 'addressPrefix'), reference(parameters('infrastructureSubnetId'), '2023-11-01').addressPrefixes[0]), cidrSubnet(parameters('managedVnetPrefix'), 27, 0))), createObject('name', 'CALISTO_NETWORK_DB_SUBNET_CIDR', 'value', if(variables('byo'), coalesce(tryGet(reference(parameters('dbDelegatedSubnetId'), '2023-11-01'), 'addressPrefix'), reference(parameters('dbDelegatedSubnetId'), '2023-11-01').addressPrefixes[0]), cidrSubnet(parameters('managedVnetPrefix'), 28, 2))), createObject('name', 'CALISTO_NETWORK_IMAGE_SOURCE', 'value', if(variables('useAcr'), 'acr', 'ghcr')), createObject('name', 'CALISTO_NETWORK_ACR_FQDNS', 'value', if(variables('useAcr'), format('{0},{1}', reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', if(variables('useAcr'), variables('acrParts')[2], subscription().subscriptionId), if(variables('useAcr'), variables('acrParts')[4], resourceGroup().name)), 'Microsoft.Resources/deployments', format('{0}-acr-pull', parameters('namePrefix'))), '2025-04-01').outputs.loginServer.value, reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', if(variables('useAcr'), variables('acrParts')[2], subscription().subscriptionId), if(variables('useAcr'), variables('acrParts')[4], resourceGroup().name)), 'Microsoft.Resources/deployments', format('{0}-acr-pull', parameters('namePrefix'))), '2025-04-01').outputs.dataEndpoint.value), '')), createObject('name', 'CALISTO_NETWORK_LOG_WORKSPACE_ID', 'value', reference(resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-logs', parameters('namePrefix'))), '2023-09-01').customerId), createObject('name', 'AZURE_CLIENT_ID', 'value', reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('namePrefix'))), '2023-01-31').clientId)), variables('awsEnv'))]",
+              "probes": [
+                {
+                  "type": "Liveness",
+                  "httpGet": {
+                    "path": "/actuator/health/liveness",
+                    "port": 8080
+                  },
+                  "initialDelaySeconds": 20,
+                  "periodSeconds": 15
+                },
+                {
+                  "type": "Readiness",
+                  "httpGet": {
+                    "path": "/actuator/health/readiness",
+                    "port": 8080
+                  },
+                  "initialDelaySeconds": 15,
+                  "periodSeconds": 15
+                }
+              ]
+            }
+          ],
+          "scale": {
+            "minReplicas": 1,
+            "maxReplicas": 1
+          }
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', if(variables('useAcr'), variables('acrParts')[2], subscription().subscriptionId), if(variables('useAcr'), variables('acrParts')[4], resourceGroup().name)), 'Microsoft.Resources/deployments', format('{0}-acr-pull', parameters('namePrefix')))]",
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers/databases', format('{0}-db-{1}', parameters('namePrefix'), uniqueString(resourceGroup().id)), parameters('dbName'))]",
+        "[resourceId('Microsoft.App/managedEnvironments', format('{0}-env', parameters('namePrefix')))]",
+        "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-logs', parameters('namePrefix')))]",
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('namePrefix')))]",
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', format('{0}-db-{1}', parameters('namePrefix'), uniqueString(resourceGroup().id)))]"
+      ]
+    },
+    {
+      "condition": "[parameters('grantSubscriptionReader')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('{0}-reader', parameters('namePrefix'))]",
+      "subscriptionId": "[subscription().subscriptionId]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "principalId": {
+            "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('namePrefix'))), '2023-01-31').principalId]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.43.8.12551",
+              "templateHash": "17753961875858652611"
+            }
+          },
+          "parameters": {
+            "principalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Object id of the managed identity to grant Reader to."
+              }
+            }
+          },
+          "variables": {
+            "readerRoleId": "acdd72a7-3385-48ef-bd42-f606fba81ae7"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(subscription().id, parameters('principalId'), variables('readerRoleId'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('readerRoleId'))]",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('namePrefix')))]"
+      ]
+    },
+    {
+      "condition": "[variables('useAcr')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('{0}-acr-pull', parameters('namePrefix'))]",
+      "subscriptionId": "[if(variables('useAcr'), variables('acrParts')[2], subscription().subscriptionId)]",
+      "resourceGroup": "[if(variables('useAcr'), variables('acrParts')[4], resourceGroup().name)]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "registryName": "[if(variables('useAcr'), createObject('value', last(variables('acrParts'))), createObject('value', 'none'))]",
+          "principalId": {
+            "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('namePrefix'))), '2023-01-31').principalId]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.43.8.12551",
+              "templateHash": "10499972804015439457"
+            }
+          },
+          "parameters": {
+            "registryName": {
+              "type": "string"
+            },
+            "principalId": {
+              "type": "string"
+            }
+          },
+          "variables": {
+            "acrPullRoleId": "7f951dda-4ed3-4680-a7ca-43fe172d538f"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.ContainerRegistry/registries', parameters('registryName'))]",
+              "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', parameters('registryName')), parameters('principalId'), variables('acrPullRoleId'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('acrPullRoleId'))]",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ],
+          "outputs": {
+            "loginServer": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ContainerRegistry/registries', parameters('registryName')), '2023-07-01').loginServer]"
+            },
+            "dataEndpoint": {
+              "type": "string",
+              "value": "[format('{0}.{1}.data.azurecr.io', parameters('registryName'), reference(resourceId('Microsoft.ContainerRegistry/registries', parameters('registryName')), '2023-07-01', 'full').location)]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('namePrefix')))]"
+      ]
+    },
+    {
+      "condition": "[not(variables('byo'))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('{0}-network', parameters('namePrefix'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "namePrefix": {
+            "value": "[parameters('namePrefix')]"
+          },
+          "addressPrefix": {
+            "value": "[parameters('managedVnetPrefix')]"
+          },
+          "caeSubnetPrefix": {
+            "value": "[cidrSubnet(parameters('managedVnetPrefix'), 27, 0)]"
+          },
+          "dbSubnetPrefix": {
+            "value": "[cidrSubnet(parameters('managedVnetPrefix'), 28, 2)]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.43.8.12551",
+              "templateHash": "10446086888015967832"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string"
+            },
+            "namePrefix": {
+              "type": "string"
+            },
+            "addressPrefix": {
+              "type": "string",
+              "defaultValue": "10.42.0.0/24",
+              "metadata": {
+                "description": "Address space of the VNet. A /24 holds both subnets with room to spare."
+              }
+            },
+            "caeSubnetPrefix": {
+              "type": "string",
+              "defaultValue": "10.42.0.0/27",
+              "metadata": {
+                "description": "Container Apps environment infrastructure subnet. /27 is the minimum for a workload-profiles environment."
+              }
+            },
+            "dbSubnetPrefix": {
+              "type": "string",
+              "defaultValue": "10.42.0.32/28",
+              "metadata": {
+                "description": "Postgres delegated subnet. /28 is the minimum Azure allows."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/networkSecurityGroups",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}-db-nsg', parameters('namePrefix'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "securityRules": [
+                  {
+                    "name": "allow-app-to-postgres",
+                    "properties": {
+                      "priority": 100,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourceAddressPrefix": "[parameters('caeSubnetPrefix')]",
+                      "sourcePortRange": "*",
+                      "destinationAddressPrefix": "[parameters('dbSubnetPrefix')]",
+                      "destinationPortRange": "5432"
+                    }
+                  },
+                  {
+                    "name": "allow-within-db-subnet",
+                    "properties": {
+                      "priority": 110,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "*",
+                      "sourceAddressPrefix": "[parameters('dbSubnetPrefix')]",
+                      "sourcePortRange": "*",
+                      "destinationAddressPrefix": "[parameters('dbSubnetPrefix')]",
+                      "destinationPortRange": "*"
+                    }
+                  },
+                  {
+                    "name": "deny-other-vnet-inbound",
+                    "properties": {
+                      "priority": 4000,
+                      "direction": "Inbound",
+                      "access": "Deny",
+                      "protocol": "*",
+                      "sourceAddressPrefix": "VirtualNetwork",
+                      "sourcePortRange": "*",
+                      "destinationAddressPrefix": "*",
+                      "destinationPortRange": "*"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Network/networkSecurityGroups",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}-app-nsg', parameters('namePrefix'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "securityRules": []
+              }
+            },
+            {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}-vnet', parameters('namePrefix'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "[parameters('addressPrefix')]"
+                  ]
+                },
+                "subnets": [
+                  {
+                    "name": "app",
+                    "properties": {
+                      "addressPrefix": "[parameters('caeSubnetPrefix')]",
+                      "networkSecurityGroup": {
+                        "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-app-nsg', parameters('namePrefix')))]"
+                      },
+                      "delegations": [
+                        {
+                          "name": "aca",
+                          "properties": {
+                            "serviceName": "Microsoft.App/environments"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "name": "db",
+                    "properties": {
+                      "addressPrefix": "[parameters('dbSubnetPrefix')]",
+                      "networkSecurityGroup": {
+                        "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-db-nsg', parameters('namePrefix')))]"
+                      },
+                      "delegations": [
+                        {
+                          "name": "pg",
+                          "properties": {
+                            "serviceName": "Microsoft.DBforPostgreSQL/flexibleServers"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-app-nsg', parameters('namePrefix')))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-db-nsg', parameters('namePrefix')))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "vnetId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('namePrefix')))]"
+            },
+            "caeSubnetId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('namePrefix'))), '2024-05-01').subnets[0].id]"
+            },
+            "dbSubnetId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('namePrefix'))), '2024-05-01').subnets[1].id]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "condition": "[empty(parameters('dbPrivateDnsZoneId'))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('{0}-db-dns', parameters('namePrefix'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "zoneName": {
+            "value": "[format('{0}.private.postgres.database.azure.com', parameters('namePrefix'))]"
+          },
+          "vnetIds": {
+            "value": "[union(createArray(if(variables('byo'), join(take(split(parameters('infrastructureSubnetId'), '/'), 9), '/'), reference(resourceId('Microsoft.Resources/deployments', format('{0}-network', parameters('namePrefix'))), '2025-04-01').outputs.vnetId.value)), parameters('dnsZoneLinkVnetIds'))]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.43.8.12551",
+              "templateHash": "13126423946815145188"
+            }
+          },
+          "parameters": {
+            "zoneName": {
+              "type": "string"
+            },
+            "vnetIds": {
+              "type": "array",
+              "metadata": {
+                "description": "VNets to link the zone to. Links to VNets in other subscriptions need join rights on those VNets."
+              }
+            },
+            "aRecords": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "A records: [{ name, ipv4 }]. Empty for a zone the service writes its own records into."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2024-06-01",
+              "name": "[parameters('zoneName')]",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "copy": {
+                "name": "links",
+                "count": "[length(parameters('vnetIds'))]"
+              },
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2024-06-01",
+              "name": "[format('{0}/{1}', parameters('zoneName'), format('link-{0}-{1}', copyIndex(), uniqueString(parameters('vnetIds')[copyIndex()])))]",
+              "location": "global",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[parameters('vnetIds')[copyIndex()]]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', parameters('zoneName'))]"
+              ]
+            },
+            {
+              "copy": {
+                "name": "records",
+                "count": "[length(parameters('aRecords'))]"
+              },
+              "type": "Microsoft.Network/privateDnsZones/A",
+              "apiVersion": "2024-06-01",
+              "name": "[format('{0}/{1}', parameters('zoneName'), parameters('aRecords')[copyIndex()].name)]",
+              "properties": {
+                "ttl": 300,
+                "aRecords": [
+                  {
+                    "ipv4Address": "[parameters('aRecords')[copyIndex()].ipv4]"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', parameters('zoneName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "zoneId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/privateDnsZones', parameters('zoneName'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', format('{0}-network', parameters('namePrefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('{0}-db-admin', parameters('namePrefix'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "serverName": {
+            "value": "[format('{0}-db-{1}', parameters('namePrefix'), uniqueString(resourceGroup().id))]"
+          },
+          "principalId": {
+            "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('namePrefix'))), '2023-01-31').principalId]"
+          },
+          "principalName": {
+            "value": "[format('{0}-mi', parameters('namePrefix'))]"
+          },
+          "tenantId": {
+            "value": "[parameters('entraTenantId')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.43.8.12551",
+              "templateHash": "9749241410935532483"
+            }
+          },
+          "parameters": {
+            "serverName": {
+              "type": "string"
+            },
+            "principalId": {
+              "type": "string"
+            },
+            "principalName": {
+              "type": "string"
+            },
+            "tenantId": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.DBforPostgreSQL/flexibleServers/administrators",
+              "apiVersion": "2024-08-01",
+              "name": "[format('{0}/{1}', parameters('serverName'), parameters('principalId'))]",
+              "properties": {
+                "principalType": "ServicePrincipal",
+                "principalName": "[parameters('principalName')]",
+                "tenantId": "[parameters('tenantId')]"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers/configurations', format('{0}-db-{1}', parameters('namePrefix'), uniqueString(resourceGroup().id)), 'log_disconnections')]",
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('namePrefix')))]",
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', format('{0}-db-{1}', parameters('namePrefix'), uniqueString(resourceGroup().id)))]"
+      ]
+    },
+    {
+      "condition": "[and(variables('internal'), parameters('createEnvironmentDnsZone'))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('{0}-env-dns', parameters('namePrefix'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "zoneName": {
+            "value": "[reference(resourceId('Microsoft.App/managedEnvironments', format('{0}-env', parameters('namePrefix'))), '2024-03-01').defaultDomain]"
+          },
+          "vnetIds": {
+            "value": "[union(createArray(if(variables('byo'), join(take(split(parameters('infrastructureSubnetId'), '/'), 9), '/'), reference(resourceId('Microsoft.Resources/deployments', format('{0}-network', parameters('namePrefix'))), '2025-04-01').outputs.vnetId.value)), parameters('dnsZoneLinkVnetIds'))]"
+          },
+          "aRecords": {
+            "value": [
+              {
+                "name": "*",
+                "ipv4": "[reference(resourceId('Microsoft.App/managedEnvironments', format('{0}-env', parameters('namePrefix'))), '2024-03-01').staticIp]"
+              },
+              {
+                "name": "@",
+                "ipv4": "[reference(resourceId('Microsoft.App/managedEnvironments', format('{0}-env', parameters('namePrefix'))), '2024-03-01').staticIp]"
+              }
+            ]
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.43.8.12551",
+              "templateHash": "13126423946815145188"
+            }
+          },
+          "parameters": {
+            "zoneName": {
+              "type": "string"
+            },
+            "vnetIds": {
+              "type": "array",
+              "metadata": {
+                "description": "VNets to link the zone to. Links to VNets in other subscriptions need join rights on those VNets."
+              }
+            },
+            "aRecords": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "A records: [{ name, ipv4 }]. Empty for a zone the service writes its own records into."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2024-06-01",
+              "name": "[parameters('zoneName')]",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "copy": {
+                "name": "links",
+                "count": "[length(parameters('vnetIds'))]"
+              },
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2024-06-01",
+              "name": "[format('{0}/{1}', parameters('zoneName'), format('link-{0}-{1}', copyIndex(), uniqueString(parameters('vnetIds')[copyIndex()])))]",
+              "location": "global",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[parameters('vnetIds')[copyIndex()]]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', parameters('zoneName'))]"
+              ]
+            },
+            {
+              "copy": {
+                "name": "records",
+                "count": "[length(parameters('aRecords'))]"
+              },
+              "type": "Microsoft.Network/privateDnsZones/A",
+              "apiVersion": "2024-06-01",
+              "name": "[format('{0}/{1}', parameters('zoneName'), parameters('aRecords')[copyIndex()].name)]",
+              "properties": {
+                "ttl": 300,
+                "aRecords": [
+                  {
+                    "ipv4Address": "[parameters('aRecords')[copyIndex()].ipv4]"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', parameters('zoneName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "zoneId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/privateDnsZones', parameters('zoneName'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.App/managedEnvironments', format('{0}-env', parameters('namePrefix')))]",
+        "[resourceId('Microsoft.Resources/deployments', format('{0}-network', parameters('namePrefix')))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "appUrl": {
+      "type": "string",
+      "value": "[format('https://{0}', reference(resourceId('Microsoft.App/containerApps', format('{0}-app', parameters('namePrefix'))), '2024-03-01').configuration.ingress.fqdn)]"
+    },
+    "managedIdentityName": {
+      "type": "string",
+      "value": "[format('{0}-mi', parameters('namePrefix'))]"
+    },
+    "managedIdentityPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('namePrefix'))), '2023-01-31').principalId]"
+    },
+    "managedIdentityClientId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('namePrefix'))), '2023-01-31').clientId]"
+    },
+    "environmentDefaultDomain": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.App/managedEnvironments', format('{0}-env', parameters('namePrefix'))), '2024-03-01').defaultDomain]"
+    },
+    "environmentStaticIp": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.App/managedEnvironments', format('{0}-env', parameters('namePrefix'))), '2024-03-01').staticIp]"
+    },
+    "postgresFqdn": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.DBforPostgreSQL/flexibleServers', format('{0}-db-{1}', parameters('namePrefix'), uniqueString(resourceGroup().id))), '2024-08-01').fullyQualifiedDomainName]"
+    },
+    "ingressMode": {
+      "type": "string",
+      "value": "[parameters('ingress')]"
+    }
+  }
+}

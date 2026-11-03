@@ -22,7 +22,7 @@ Calisto's source code is not published. The container image is
 In Azure Cloud Shell (Bash), signed in to the subscription Calisto should live in:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/main/deploy/install.sh | bash -s -- --region australiaeast --verify
+curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/main/deploy/install.sh | bash -s -- --subscription <subscription-id> --region australiaeast --verify
 ```
 
 That is the trial layout: a small VNet, a public app address that requires an Entra sign-in,
@@ -32,9 +32,9 @@ firewall, see [RUNNING.md](RUNNING.md).
 To pin a release, use the installer from its tag and name the image:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/v0.4.3/deploy/install.sh \
-  | CALISTO_BASE=https://raw.githubusercontent.com/abhijitsghosh/calisto-install/v0.4.3/deploy \
-    bash -s -- --region australiaeast --image ghcr.io/abhijitsghosh/calisto:0.4.3 --verify
+curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/v0.4.4/deploy/install.sh \
+  | CALISTO_BASE=https://raw.githubusercontent.com/abhijitsghosh/calisto-install/v0.4.4/deploy \
+    bash -s -- --subscription <subscription-id> --region australiaeast --image ghcr.io/abhijitsghosh/calisto:0.4.4 --verify
 ```
 
 ## Verify the image yourself

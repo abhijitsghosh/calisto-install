@@ -85,7 +85,7 @@ network teams for:
 Install:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/main/deploy/install.sh | bash -s -- --region australiaeast \
+curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/main/deploy/install.sh | bash -s -- --subscription <subscription-id> --region australiaeast \
   --infrastructure-subnet /subscriptions/<spoke>/resourceGroups/<rg>/providers/Microsoft.Network/virtualNetworks/<vnet>/subnets/<app-subnet> \
   --db-subnet /subscriptions/<spoke>/resourceGroups/<rg>/providers/Microsoft.Network/virtualNetworks/<vnet>/subnets/<db-subnet> \
   --db-dns-zone /subscriptions/<connectivity>/resourceGroups/<dns-rg>/providers/Microsoft.Network/privateDnsZones/private.postgres.database.azure.com \
@@ -129,7 +129,7 @@ Permissions page ([AWS](#aws)):
 ### Trial
 
 ```bash
-curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/main/deploy/install.sh | bash -s -- --region australiaeast
+curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/main/deploy/install.sh | bash -s -- --subscription <subscription-id> --region australiaeast
 ```
 
 With no subnets given, the template creates `calisto-vnet` (10.42.0.0/24; change it with
@@ -182,6 +182,7 @@ hub; nothing in the spoke is published to the internet.
 
 | Option | Purpose |
 |---|---|
+| `--subscription` | the subscription to install into (default: the shell's current one, which in Cloud Shell may not be the one you expect) |
 | `--region` | `australiaeast` (default) or `australiasoutheast` |
 | `--resource-group` | target resource group (default `rg-calisto`) |
 | `--infrastructure-subnet`, `--db-subnet` | bring your own subnets (both together); checked for delegation and size before deploying |
@@ -195,7 +196,7 @@ hub; nothing in the spoke is published to the internet.
 | `--verify` | verify the image's cosign signature before deploying |
 | `--acr <name or id>` | import the image into this ACR and pull from it with the managed identity |
 | `--skip-reader-grant` | make no Azure role assignment on the install subscription; leave Reader to the Permissions page |
-| `--app-id` | use an existing app registration instead of creating `Calisto` |
+| `--app-id` | use an existing app registration instead of creating `Calisto`. A second install in the same tenant gets its own app, `Calisto (<subscription name>)`, so it never takes over the first one's sign-in |
 | `--log-retention-days` | Log Analytics retention (default 90) |
 | `--template-file` | deploy a local `azuredeploy.json` instead of the published one |
 
@@ -504,7 +505,7 @@ a connection saved on the page takes precedence.
 Re-run the installer with the new version:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/main/deploy/install.sh | bash -s -- --region australiaeast \
+curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/main/deploy/install.sh | bash -s -- --subscription <subscription-id> --region australiaeast \
   --image ghcr.io/abhijitsghosh/calisto:<version> --verify
 ```
 
@@ -532,9 +533,10 @@ can run from a VM or Cloud Shell attached to the VNet).
 
 ```bash
 MI_OBJ=$(az identity show -g rg-calisto -n calisto-mi --query principalId -o tsv)
-# The management-group Reader is outside the stack; remove it while the identity still exists.
-az role assignment delete --assignee "$MI_OBJ" --role Reader \
-  --scope /providers/Microsoft.Management/managementGroups/<mg-id>
+# Role assignments made on the Permissions page (Reader at a management group) are outside the
+# stack; remove every one the identity holds while it still exists.
+az role assignment list --assignee "$MI_OBJ" --all --query "[].id" -o tsv \
+  | xargs -r -n1 az role assignment delete --ids
 az stack group delete --name calisto -g rg-calisto --action-on-unmanage deleteAll --yes
 az group delete -n rg-calisto --yes
 az ad app delete --id <sign-in app id printed by the installer>

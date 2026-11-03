@@ -3,10 +3,10 @@
 # should live in (for a landing zone: the application landing-zone spoke subscription).
 #
 #   Trial (creates a small VNet; public app ingress; Postgres private):
-#     curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/main/deploy/install.sh | bash -s -- --region australiaeast
+#     curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/main/deploy/install.sh | bash -s -- --subscription <id> --region australiaeast
 #
 #   Landing zone (your spoke subnets; internal ingress; hub DNS zone; image from your ACR):
-#     curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/main/deploy/install.sh | bash -s -- --region australiaeast \
+#     curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/main/deploy/install.sh | bash -s -- --subscription <id> --region australiaeast \
 #       --infrastructure-subnet <subnet-id> --db-subnet <subnet-id> \
 #       --db-dns-zone <private-dns-zone-id> --acr <registry-name> --verify
 #
@@ -24,6 +24,7 @@
 set -euo pipefail
 
 REGION="australiaeast"
+SUBSCRIPTION=""
 RG="rg-calisto"
 STACK="calisto"
 IMAGE="ghcr.io/abhijitsghosh/calisto:latest"
@@ -49,6 +50,7 @@ note() { echo "    $*"; }
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --region) REGION="$2"; shift 2;;
+    --subscription) SUBSCRIPTION="$2"; shift 2;;
     --resource-group) RG="$2"; shift 2;;
     --image) IMAGE="$2"; shift 2;;
     --template-file) TEMPLATE="$2"; shift 2;;
@@ -90,8 +92,12 @@ case "$INGRESS" in ""|internal|external) ;; *) die "--ingress is internal or ext
 
 command -v az >/dev/null || die "the Azure CLI is required (use Azure Cloud Shell)."
 command -v jq >/dev/null || die "jq is required (Azure Cloud Shell has it)."
+if [[ -n "$SUBSCRIPTION" ]]; then
+  az account set --subscription "$SUBSCRIPTION" >/dev/null 2>&1 || die "subscription '$SUBSCRIPTION' not found or not accessible."
+fi
 TENANT=$(az account show --query tenantId -o tsv) || die "run 'az login' first."
 SUB=$(az account show --query id -o tsv)
+SUB_NAME=$(az account show --query name -o tsv)
 
 SCRIPT_DIR=""
 if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
@@ -100,7 +106,8 @@ fi
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
-echo "==> Calisto install: subscription $SUB, region $REGION, resource group $RG"
+echo "==> Calisto install: subscription $SUB_NAME ($SUB), region $REGION, resource group $RG"
+[[ -z "$SUBSCRIPTION" ]] && note "the shell's current subscription; pass --subscription to choose another"
 
 # ---------------------------------------------------------------------------------------
 # Earlier install: keep its network and image-source settings unless new ones are given.
@@ -276,15 +283,30 @@ cat > "$WORK/rra.json" <<'EOF'
   {"id":"14dad69e-099b-42c9-810b-d002981feec1","type":"Scope"},
   {"id":"64a6cdd6-aab1-4aaf-94b8-3cc8405e90d0","type":"Scope"}]}]
 EOF
+APP_NAME="Calisto"
+# --display-name matches by prefix; an exact OData match keeps "Calisto (...)" apart from "Calisto".
+app_named() { local q="'"; az ad app list --filter "displayName eq '${1//$q/$q$q}'" --query "[0].appId" -o tsv 2>/dev/null || true; }
 if [[ -z "$APP_ID" ]]; then
-  APP_ID=$(az ad app list --display-name Calisto --query "[0].appId" -o tsv 2>/dev/null || true)
+  APP_ID=$(app_named "$APP_NAME")
+  # The app named Calisto may already sign in another install in this tenant (a test and a
+  # production one, say). Taking it over would repoint its sign-in here and lock that one out,
+  # so this install gets its own app instead.
+  if [[ -n "$APP_ID" ]]; then
+    OTHER_MI=$(az ad app federated-credential list --id "$APP_ID" --query "[?name=='calisto-managed-identity'].subject | [0]" -o tsv 2>/dev/null || true)
+    if [[ -n "$OTHER_MI" ]] && az ad sp show --id "$OTHER_MI" >/dev/null 2>&1; then
+      OTHER_URL=$(az ad app show --id "$APP_ID" --query "web.redirectUris[?ends_with(@, '/login/oauth2/code/entra')] | [0]" -o tsv 2>/dev/null || true)
+      note "the app named Calisto already signs in another install (${OTHER_URL%/login/oauth2/code/entra}); leaving it alone"
+      APP_NAME="Calisto ($SUB_NAME)"
+      APP_ID=$(app_named "$APP_NAME")
+    fi
+  fi
 fi
 # A name lookup can return a soft-deleted app that no longer resolves; only reuse a live one.
 if [[ -n "$APP_ID" ]] && ! az ad app show --id "$APP_ID" >/dev/null 2>&1; then
   APP_ID=""
 fi
 if [[ -z "$APP_ID" ]]; then
-  APP_ID=$(az ad app create --display-name Calisto --sign-in-audience AzureADMyOrg \
+  APP_ID=$(az ad app create --display-name "$APP_NAME" --sign-in-audience AzureADMyOrg \
     --web-redirect-uris "https://localhost/login/oauth2/code/entra" \
     --app-roles @"$WORK/roles.json" --required-resource-accesses @"$WORK/rra.json" --query appId -o tsv) \
     || die "could not create the app registration (your tenant may restrict app registration). Ask an
@@ -298,7 +320,8 @@ APP_SP=$(az ad sp show --id "$APP_ID" --query id -o tsv)
 # Only users (or groups) assigned an app role may sign in.
 az ad sp update --id "$APP_ID" --set appRoleAssignmentRequired=true -o none \
   || note "WARNING: could not require assignment on the Calisto enterprise app; set 'Assignment required' in the portal."
-note "app $APP_ID"
+APP_NAME=$(az ad app show --id "$APP_ID" --query displayName -o tsv 2>/dev/null || echo "$APP_NAME")
+note "app $APP_NAME ($APP_ID)"
 
 # ---------------------------------------------------------------------------------------
 # Deploy the stack.
@@ -392,7 +415,7 @@ fi
 cat <<EOF
 
     Assign roles (Calisto.Viewer, Calisto.Assessor, Calisto.Approver, Calisto.Admin):
-      Portal: Entra ID > Enterprise applications > Calisto > Users and groups > Add user/group
+      Portal: Entra ID > Enterprise applications > $APP_NAME > Users and groups > Add user/group
       CLI:    az rest --method POST \\
                 --uri https://graph.microsoft.com/v1.0/servicePrincipals/$APP_SP/appRoleAssignedTo \\
                 --body '{"principalId":"<user-or-group-object-id>","resourceId":"$APP_SP","appRoleId":"<role-id>"}'
@@ -419,6 +442,9 @@ if [[ -n "$APP_CIDR" ]]; then
 fi
 cat <<EOF
 
-    Teardown: az stack group delete --name $STACK -g $RG --action-on-unmanage deleteAll --yes \\
-              && az group delete -n $RG --yes && az ad app delete --id $APP_ID
+    Teardown (first remove the identity's role assignments, including Reader at a management group,
+    which sit outside the stack and would otherwise be left orphaned):
+      az role assignment list --assignee $MI_OBJ --all --query "[].id" -o tsv | xargs -r -n1 az role assignment delete --ids
+      az stack group delete --name $STACK -g $RG --action-on-unmanage deleteAll --yes \\
+        && az group delete -n $RG --yes && az ad app delete --id $APP_ID
 EOF

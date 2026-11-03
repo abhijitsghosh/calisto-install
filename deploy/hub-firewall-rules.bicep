@@ -96,7 +96,7 @@ var monitorFqdns = empty(logAnalyticsWorkspaceId) ? [
   '${logAnalyticsWorkspaceId}.oms.opinsights.azure.com'
 ]
 
-// AWS services the collectors call per region (src/main/java/au/calisto/aws/AwsClients.java).
+// AWS services the collectors call per region.
 // Endpoint prefixes, which are not always the SDK client name: EFS is elasticfilesystem,
 // SSO Admin is sso, ELBv2 is elasticloadbalancing, API Gateway v1 and v2 share apigateway, SageMaker is api.sagemaker,
 // the Resource Groups Tagging API is tagging.

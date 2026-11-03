@@ -509,8 +509,9 @@ curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/main/de
   --image ghcr.io/abhijitsghosh/calisto:<version> --verify
 ```
 
-It reads the existing stack's parameters and keeps the network mode, subnets, DNS zone,
-ingress, registry, app registration and AWS settings, so only the image changes. The
+It reads the existing stack's parameters and keeps the network mode, subnets, DNS zone and
+its links, ingress and the allowed ingress addresses, registry, app registration and AWS
+settings, so only the image changes. The
 database is kept; Flyway migrates the schema on start. The image is again pinned by digest.
 
 Upgrading from 0.3 or earlier: re-running the installer adds the two sign-in return addresses the

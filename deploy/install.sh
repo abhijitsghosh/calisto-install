@@ -34,7 +34,7 @@ GRANT_READER="true"
 APP_ID=""
 ACR=""
 VERIFY="false"
-INFRA_SUBNET=""; DB_SUBNET=""; DB_DNS_ZONE=""; INGRESS=""; ENV_DNS="true"; DNS_LINKS=()
+INFRA_SUBNET=""; DB_SUBNET=""; DB_DNS_ZONE=""; INGRESS=""; ENV_DNS=""; DNS_LINKS=()
 MANAGED_PREFIX=""; ALLOWED_INGRESS=""; LOG_RETENTION=""
 AWS_ROLE_ARN=""; AWS_ACCOUNTS=""; AWS_REGIONS=""; AWS_MEMBER_ROLE=""
 
@@ -127,6 +127,12 @@ if [[ -n "$PREV_MODE" && -z "$INFRA_SUBNET$DB_SUBNET" ]]; then
   note "keeping the network settings of the existing install ($PREV_MODE, ingress ${INGRESS:-default})"
 fi
 [[ -z "$ACR" ]] && ACR=$(prev acrResourceId)
+# Access rules and DNS choices carry over too: an upgrade must never reopen an app that was
+# limited to the agency's addresses, or recreate a DNS zone the hub hosts.
+PREV_ALLOWED=$(prev allowedIngressCidrs)
+PREV_DNS_LINKS=$(prev dnsZoneLinkVnetIds)
+[[ -z "$ENV_DNS" ]] && ENV_DNS=$(prev createEnvironmentDnsZone)
+[[ -z "$ENV_DNS" ]] && ENV_DNS="true"
 [[ -z "$APP_ID" ]] && APP_ID=$(prev entraClientId)
 
 # The previous template ran Postgres with a public endpoint and password auth. Its network
@@ -179,9 +185,14 @@ fi
 NET_PARAMS+=(createEnvironmentDnsZone="$ENV_DNS")
 if [[ ${#DNS_LINKS[@]} -gt 0 ]]; then
   NET_PARAMS+=(dnsZoneLinkVnetIds="$(printf '%s\n' "${DNS_LINKS[@]}" | jq -R . | jq -sc .)")
+elif [[ -n "$PREV_DNS_LINKS" && "$PREV_DNS_LINKS" != "[]" ]]; then
+  NET_PARAMS+=(dnsZoneLinkVnetIds="$PREV_DNS_LINKS")
 fi
 if [[ -n "$ALLOWED_INGRESS" ]]; then
   NET_PARAMS+=(allowedIngressCidrs="$(tr ',' '\n' <<<"$ALLOWED_INGRESS" | jq -R . | jq -sc .)")
+elif [[ -n "$PREV_ALLOWED" && "$PREV_ALLOWED" != "[]" ]]; then
+  NET_PARAMS+=(allowedIngressCidrs="$PREV_ALLOWED")
+  note "keeping the allowed ingress addresses: $(jq -r 'join(", ")' <<<"$PREV_ALLOWED")"
 fi
 
 # ---------------------------------------------------------------------------------------

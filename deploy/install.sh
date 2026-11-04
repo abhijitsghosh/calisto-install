@@ -331,6 +331,21 @@ APP_SP=$(az ad sp show --id "$APP_ID" --query id -o tsv)
 # Only users (or groups) assigned an app role may sign in.
 az ad sp update --id "$APP_ID" --set appRoleAssignmentRequired=true -o none \
   || note "WARNING: could not require assignment on the Calisto enterprise app; set 'Assignment required' in the portal."
+# Consent to the sign-in scopes (openid profile email) for the whole organisation, so assigned
+# users are not asked for admin approval when user consent is off, as it is in hardened tenants.
+GRAPH_SP=$(az ad sp show --id 00000003-0000-0000-c000-000000000000 --query id -o tsv 2>/dev/null || true)
+if [[ -n "$GRAPH_SP" ]]; then
+  SIGNIN_GRANT=$(az rest --method get --url "https://graph.microsoft.com/v1.0/oauth2PermissionGrants?\$filter=clientId eq '$APP_SP' and resourceId eq '$GRAPH_SP' and consentType eq 'AllPrincipals'" \
+    --query "value[0].id" -o tsv 2>/dev/null || true)
+  if [[ -n "$SIGNIN_GRANT" ]]; then
+    az rest --method patch --url "https://graph.microsoft.com/v1.0/oauth2PermissionGrants/$SIGNIN_GRANT" \
+      --body '{"scope":"openid profile email"}' -o none 2>/dev/null || true
+  elif ! az rest --method post --url "https://graph.microsoft.com/v1.0/oauth2PermissionGrants" \
+      --body "{\"clientId\":\"$APP_SP\",\"consentType\":\"AllPrincipals\",\"resourceId\":\"$GRAPH_SP\",\"scope\":\"openid profile email\"}" -o none 2>/dev/null; then
+    note "WARNING: could not consent to Calisto's sign-in for your organisation. Grant admin consent on the"
+    note "         Calisto app's API permissions page, or other users will be asked for admin approval."
+  fi
+fi
 APP_NAME=$(az ad app show --id "$APP_ID" --query displayName -o tsv 2>/dev/null || echo "$APP_NAME")
 note "app $APP_NAME ($APP_ID)"
 

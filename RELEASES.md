@@ -2,6 +2,7 @@
 
 | Version | Date | Image |
 |---|---|---|
+| 0.4.14 | 2026-11-04 | `ghcr.io/abhijitsghosh/calisto@sha256:24a5fdf882e6ab6430f89baf378a389b3386fe276f83ff38f16613bac792c8b3` |
 | 0.4.13 | 2026-11-04 | `ghcr.io/abhijitsghosh/calisto@sha256:015ace4e2b0c258a9610864ad65c9f1934ef4ebaf10a02fffcc0c8c05c3e2e25` |
 | 0.4.12 | 2026-11-04 | `ghcr.io/abhijitsghosh/calisto@sha256:0bada551ab128acb36d6d77ce9f0ab747e1440fad3e530e2ee626efc85236922` |
 | 0.4.11 | 2026-11-04 | `ghcr.io/abhijitsghosh/calisto@sha256:14e738966c5819f8e5eb1f26334f2459ae4f1298da5fced6010c8e8d17b25b49` |

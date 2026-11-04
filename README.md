@@ -32,9 +32,9 @@ firewall, see [RUNNING.md](RUNNING.md).
 To pin a release, use the installer from its tag and name the image:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/v0.4.15/deploy/install.sh \
-  | CALISTO_BASE=https://raw.githubusercontent.com/abhijitsghosh/calisto-install/v0.4.15/deploy \
-    bash -s -- --subscription <subscription-id> --region australiaeast --image ghcr.io/abhijitsghosh/calisto:0.4.15 --verify
+curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/v0.4.16/deploy/install.sh \
+  | CALISTO_BASE=https://raw.githubusercontent.com/abhijitsghosh/calisto-install/v0.4.16/deploy \
+    bash -s -- --subscription <subscription-id> --region australiaeast --image ghcr.io/abhijitsghosh/calisto:0.4.16 --verify
 ```
 
 ## Verify the image yourself

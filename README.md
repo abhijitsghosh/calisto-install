@@ -31,6 +31,12 @@ release pipeline so you can check it was built from that source (see below).
 In Azure Cloud Shell (Bash), signed in to the subscription Calisto should live in:
 
 ```bash
+curl -sL https://calisto.run/install.sh | bash
+```
+
+Or straight from this repository:
+
+```bash
 curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/main/deploy/install.sh | bash -s -- --subscription <subscription-id> --region australiaeast --verify
 ```
 

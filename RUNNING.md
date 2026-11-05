@@ -513,7 +513,13 @@ a connection saved on the page takes precedence.
 
 ## Upgrade
 
-Re-run the installer with the new version:
+To move to the latest release, run this in Cloud Shell in the subscription Calisto is installed in:
+
+```bash
+curl -sL https://calisto.run/upgrade.sh | bash
+```
+
+To move to a particular version, re-run the installer with it:
 
 ```bash
 curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/main/deploy/install.sh | bash -s -- --subscription <subscription-id> --region australiaeast \

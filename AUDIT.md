@@ -15,9 +15,8 @@ teams are welcome to audit the code.
 - **ASD source material.** ASD's OSCAL release of the enterprise IT chapter ships unchanged. The
   cloud and OT chapters are transcribed by a script you can rerun against ASD's pages.
 
-Ask for read access by opening an issue in the
-[calisto-install](https://github.com/abhijitsghosh/calisto-install) repository, and we will
-arrange a review of the full repository.
+Ask for read access at [contact@calisto.run](mailto:contact@calisto.run), and we will arrange a
+review of the full repository.
 
 ## What you can check without access
 

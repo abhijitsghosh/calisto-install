@@ -18,10 +18,11 @@ This repository holds what an agency needs to install and run it:
 | [deploy/hub-firewall-rules.bicep](deploy/hub-firewall-rules.bicep) | egress rules for a hub Azure Firewall |
 | [RUNNING.md](RUNNING.md) | installation, network design, permissions, upgrade and teardown |
 | [RELEASES.md](RELEASES.md) | each release's image digest |
+| [ABOUT.md](ABOUT.md) | who builds Calisto, and how to get in touch |
 | [AUDIT.md](AUDIT.md) | how to audit Calisto's code and what you can check without access |
 
 Calisto's source code is not published, but agencies and their security assessors are welcome
-to audit it ([AUDIT.md](AUDIT.md)). Ask for read access and we will arrange a review of the full source, build
+to audit it ([AUDIT.md](AUDIT.md)). Ask for read access at contact@calisto.run and we will arrange a review of the full source, build
 pipeline and tests. The container image is `ghcr.io/abhijitsghosh/calisto`, signed by the
 release pipeline so you can check it was built from that source (see below).
 

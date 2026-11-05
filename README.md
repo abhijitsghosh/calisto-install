@@ -1,8 +1,8 @@
 # Calisto installer
 
 Calisto assesses an agency against ASD's Essentials: enterprise IT, cloud and operational
-technology. It runs in the agency's own Azure subscription and reads Azure, Microsoft 365 and
-AWS with read-only access.
+technology. It runs in the agency's own Azure subscription and reads Azure and Microsoft 365
+with read-only access. AWS is a preview in this release and will be fully supported in the next.
 
 This repository holds what an agency needs to install and run it:
 
@@ -14,8 +14,10 @@ This repository holds what an agency needs to install and run it:
 | [RUNNING.md](RUNNING.md) | installation, network design, permissions, upgrade and teardown |
 | [RELEASES.md](RELEASES.md) | each release's image digest |
 
-Calisto's source code is not published. The container image is
-`ghcr.io/abhijitsghosh/calisto`.
+Calisto's source code is not published, but agencies and their security assessors are welcome
+to audit it. Ask for read access and we will arrange a review of the full source, build
+pipeline and tests. The container image is `ghcr.io/abhijitsghosh/calisto`, signed by the
+release pipeline so you can check it was built from that source (see below).
 
 ## Install
 
@@ -32,9 +34,9 @@ firewall, see [RUNNING.md](RUNNING.md).
 To pin a release, use the installer from its tag and name the image:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/v0.4.20/deploy/install.sh \
-  | CALISTO_BASE=https://raw.githubusercontent.com/abhijitsghosh/calisto-install/v0.4.20/deploy \
-    bash -s -- --subscription <subscription-id> --region australiaeast --image ghcr.io/abhijitsghosh/calisto:0.4.20 --verify
+curl -sL https://raw.githubusercontent.com/abhijitsghosh/calisto-install/v0.4.21/deploy/install.sh \
+  | CALISTO_BASE=https://raw.githubusercontent.com/abhijitsghosh/calisto-install/v0.4.21/deploy \
+    bash -s -- --subscription <subscription-id> --region australiaeast --image ghcr.io/abhijitsghosh/calisto:0.4.21 --verify
 ```
 
 ## Verify the image yourself

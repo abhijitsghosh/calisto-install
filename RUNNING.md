@@ -2,7 +2,7 @@
 
 Calisto rates an organisation against ASD Essentials for enterprise IT (the October 2026
 successor to the Essential Eight) from read-only evidence in Azure, Microsoft 365 and,
-optionally, AWS, plus the assessor's findings for what no API can see. It deploys into the
+optionally, AWS (a preview in this release), plus the assessor's findings for what no API can see. It deploys into the
 agency's own Azure tenancy and writes nothing to the environments it assesses.
 
 ## What gets deployed
@@ -115,6 +115,8 @@ The same as hub and spoke, with these differences:
   from the database subnet).
 
 ### Agency B: AWS Organizations, Azure and Microsoft 365
+
+AWS is a preview in this release (see [AWS](#aws)).
 
 Install into Azure as Agency A (or the trial layout), then connect AWS on Calisto's
 Permissions page ([AWS](#aws)):
@@ -423,6 +425,11 @@ cosign verify ghcr.io/abhijitsghosh/calisto@sha256:<digest> \
 - All data, backups and logs stay in Australian regions.
 
 ## AWS
+
+**AWS is a preview in this release.** The AWS checks pass Calisto's automated tests but have
+not yet been tested against a live AWS Organization. Treat AWS ratings as indicative, and
+confirm them by hand before they go into a finalised assessment. Full support is planned for
+the next release. Azure and Microsoft 365 are fully supported.
 
 AWS is off by default. Turning it on adds AWS assets and 32 AWS checks to the same
 inventory, ratings and reports. Calisto stays hosted in Azure and reaches AWS with its own

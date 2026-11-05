@@ -4,7 +4,7 @@ Calisto is built and maintained by Abhijit Ghosh in Australia.
 
 It started from a practical problem. ASD's Essentials asks agencies to rate every action in every
 domain it applies to, cite their evidence and keep the result for later review. Much of that
-evidence already sits in Azure, Microsoft 365 and AWS, but collecting it by hand takes weeks.
+evidence already sits in Azure, Microsoft 365 and AWS, but collecting it by hand can take weeks.
 Calisto reads it for the agency, proposes what the evidence shows, and leaves every conclusion
 to the agency's own assessor.
 

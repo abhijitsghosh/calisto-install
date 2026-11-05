@@ -27,6 +27,9 @@ paired region, which is the other of the two, so backup copies stay in Australia
 
 ### Standing cost
 
+Calisto itself is free to use, with no licence fee or subscription. These Azure resources are
+what the agency pays for.
+
 The Container App runs one replica at all times, the Postgres server is billed while it
 exists, Log Analytics bills per GB ingested, and geo-redundant backup storage is billed for
 the copy. VNets, NSGs and private DNS zones in the trial layout cost little or nothing. Tear

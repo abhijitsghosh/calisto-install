@@ -4,6 +4,9 @@ Calisto assesses an agency against ASD's Essentials: enterprise IT, cloud and op
 technology. It runs in the agency's own Azure subscription and reads Azure and Microsoft 365
 with read-only access. AWS is a preview in this release and will be fully supported in the next.
 
+Calisto is free to use. There is no licence fee and no subscription. The agency pays only
+for the Azure resources Calisto runs on in its own subscription ([standing cost](RUNNING.md#standing-cost)).
+
 This repository holds what an agency needs to install and run it:
 
 | File | Purpose |
